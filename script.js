@@ -284,8 +284,8 @@ function renderBoard() {
         }
     }
     status.textContent = currentPlayer === 'player' ? 'あなたのターン (○)！' :
-                         currentPlayer === 'ai1' ? 'AI✕のターン...（考え中）' :
-                         'AI神のターン...（考え中）';
+                         currentPlayer === 'ai1' ? '✕のターン...（考え中）' :
+                         '神のターン...（考え中）';
 }
 
 function handleClick(e) {
@@ -401,7 +401,7 @@ function isFull(b) {
 
 function announceWin(player) {
     const mark = getMark(player);
-    status.textContent = `${mark} の勝ち！ おめでとう！`;
+    status.textContent = `${mark} の勝ち！`;
     boardEl.querySelectorAll('.cell').forEach(cell => {
         cell.style.pointerEvents = 'none';
         cell.disabled = true;
@@ -409,7 +409,7 @@ function announceWin(player) {
 }
 
 function announceDraw() {
-    status.textContent = '引き分け！ みんな上手かったね！';
+    status.textContent = '引き分けだね！';
     boardEl.querySelectorAll('.cell').forEach(cell => {
         cell.style.pointerEvents = 'none';
         cell.disabled = true;
