@@ -47,6 +47,43 @@ function getWinner(b) {
     return null;
 }
 
+// 脅威評価: プレイヤーごとの2連続数 (ブロック優先用) - 強化版: 3連続予備も考慮
+function evaluateThreats(board, player) {
+    let threats = 0;
+    // 横の2連続 (3連続予備含む)
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 3; col++) {
+            if (board[row][col] === player && board[row][col+1] === player && !board[row][col+2]) threats += 2; // 2連続
+            if (!board[row][col] && board[row][col+1] === player && board[row][col+2] === player) threats += 2;
+            // 3連続予備 (空き2つ挟み)
+            if (board[row][col] === player && !board[row][col+1] && board[row][col+2] === player && !board[row][col+3]) threats += 1;
+        }
+    }
+    // 縦の2連続
+    for (let col = 0; col < 4; col++) {
+        for (let row = 0; row < 3; row++) {
+            if (board[row][col] === player && board[row+1][col] === player && !board[row+2][col]) threats += 2;
+            if (!board[row][col] && board[row+1][col] === player && board[row+2][col] === player) threats += 2;
+            if (board[row][col] === player && !board[row+1][col] && board[row+2][col] === player && !board[row+3][col]) threats += 1;
+        }
+    }
+    // 斜め左上
+    for (let row = 0; row < 2; row++) {
+        for (let col = 0; col < 2; col++) {
+            if (board[row][col] === player && board[row+1][col+1] === player && !board[row+2][col+2]) threats += 2;
+            if (!board[row][col] && board[row+1][col+1] === player && board[row+2][col+2] === player) threats += 2;
+        }
+    }
+    // 斜め右上
+    for (let row = 0; row < 2; row++) {
+        for (let col = 2; col < 4; col++) {
+            if (board[row][col] === player && board[row+1][col-1] === player && !board[row+2][col-2]) threats += 2;
+            if (!board[row][col] && board[row+1][col-1] === player && board[row+2][col-2] === player) threats += 2;
+        }
+    }
+    return threats;
+}
+
 // 即時勝ち/ブロックチェック
 function canWinImmediately(board, player) {
     const empties = getEmptyCells(board);
@@ -62,30 +99,84 @@ function canWinImmediately(board, player) {
 }
 
 function canBlockImmediately(board, opponent) {
-    return canWinImmediately(board, opponent); // 相手の即勝ち位置 = ブロック位置
+    return canWinImmediately(board, opponent);
 }
 
-// 3人用Minimax: AI視点で自分のターンmax、他ターンmin
+// 2手先ブロック: 強化 - 複数脅威をすべてリスト、優先度付け
+function getCriticalBlocks(board, aiPlayer) {
+    const nextOpponent = getNextPlayer(aiPlayer);
+    const opponentWins = [];
+    const empties = getEmptyCells(board);
+    for (let [r, c] of empties) {
+        board[r][c] = nextOpponent;
+        if (checkWin(board, nextOpponent)) {
+            opponentWins.push([r, c]);
+        }
+        board[r][c] = null;
+    }
+    if (opponentWins.length === 0) return null;
+    // 複数なら、1手で最多カバー位置を探す
+    let bestCover = null;
+    let maxCovers = 0;
+    for (let [r, c] of empties) {
+        let covers = 0;
+        for (let threat of opponentWins) {
+            if (threat[0] === r && threat[1] === c) covers++;
+        }
+        if (covers > maxCovers) {
+            maxCovers = covers;
+            bestCover = [r, c];
+        }
+    }
+    return bestCover || opponentWins[Math.floor(Math.random() * opponentWins.length)];
+}
+
+// 3手先脅威チェック (妨害強化)
+function getThreeStepThreats(board, aiPlayer) {
+    const nextOpp = getNextPlayer(aiPlayer);
+    const nextNext = getNextPlayer(nextOpp); // aiPlayerの次の次の相手
+    let threats = [];
+    const empties = getEmptyCells(board);
+    for (let [r, c] of empties) {
+        board[r][c] = nextOpp;
+        const afterOpp = canWinImmediately(board, nextNext);
+        board[r][c] = null;
+        if (afterOpp) threats.push(afterOpp);
+    }
+    return threats.length > 0 ? threats[0] : null; // 簡易: 1つ返し
+}
+
+// 3人用Minimax: AI視点で自分のターンmax、他ターンmin - 妨害特化
 function minimax(board, depth, alpha, beta, currentTurn, aiPlayer) {
-    if (depth === 0) return 0;
+    if (depth === 0) {
+        // ヒューリスティック強化: 妨害重視 - 相手脅威超ペナルティ、自分の脅威大ボーナス
+        const myThreats = evaluateThreats(board, aiPlayer);
+        const opp1Threats = evaluateThreats(board, getNextPlayer(aiPlayer));
+        const opp2Threats = evaluateThreats(board, getNextPlayer(getNextPlayer(aiPlayer)));
+        const mobility = getEmptyCells(board).length; // 移動性ボーナス
+        return myThreats * 200 + mobility * 5 - opp1Threats * 300 - opp2Threats * 300;
+    }
 
     const winner = getWinner(board);
     if (winner) {
-        // 強化: 自分の勝ち大正、相手の勝ち大負（depthで調整）
-        const baseScore = winner === aiPlayer ? 1000 : -1000;
-        return baseScore + (winner === aiPlayer ? -depth * 10 : depth * 10); // 早い勝ち+、遅い負け少しマシ
+        // 妨害特化: 相手勝ちを極大ペナルティ、自分の勝ち超ボーナス
+        const baseScore = winner === aiPlayer ? 5000 : -5000;
+        return baseScore + (winner === aiPlayer ? -depth * 50 : depth * 50); // 早い妨害/勝ちを優先
     }
-    if (isFull(board)) return 0; // 引き分け
+    if (isFull(board)) return -10; // 引き分け軽ペナルティ (勝ち妨害より)
 
     const isMax = (currentTurn === aiPlayer);
     let best = isMax ? -Infinity : Infinity;
 
     const emptyCells = getEmptyCells(board);
-    // 手をソート: 中心優先
+    // 手をソート: 妨害位置超優先 + 中心
     emptyCells.sort((a, b) => {
+        const nextOpp = getNextPlayer(aiPlayer);
+        const threatBonusA = evaluateThreats(board, nextOpp) > 0 ? 200 : 0; // 脅威時超ボーナス
+        const threatBonusB = evaluateThreats(board, nextOpp) > 0 ? 200 : 0;
         const centerDistA = Math.abs(a[0] - 1.5) + Math.abs(a[1] - 1.5);
         const centerDistB = Math.abs(b[0] - 1.5) + Math.abs(b[1] - 1.5);
-        return centerDistA - centerDistB;
+        return (threatBonusA - threatBonusB) || (centerDistA - centerDistB);
     });
 
     for (let [r, c] of emptyCells) {
@@ -117,7 +208,21 @@ function getBestMove(board, aiPlayer) {
         return immediateWin;
     }
 
-    // 即時ブロックチェック (次の相手の勝ちを防ぐ)
+    // 2手先ブロックチェック (複数脅威対応強化)
+    let criticalBlock = getCriticalBlocks(board, aiPlayer);
+    if (criticalBlock) {
+        console.log(`Critical block for next opponent at`, criticalBlock);
+        return criticalBlock;
+    }
+
+    // 3手先脅威チェック (妨害強化)
+    let threeStepBlock = getThreeStepThreats(board, aiPlayer);
+    if (threeStepBlock) {
+        console.log(`Three-step block for ${aiPlayer} at`, threeStepBlock);
+        return threeStepBlock;
+    }
+
+    // 即時ブロック
     const nextOpponent = getNextPlayer(aiPlayer);
     let immediateBlock = canBlockImmediately(board, nextOpponent);
     if (immediateBlock) {
@@ -125,19 +230,25 @@ function getBestMove(board, aiPlayer) {
         return immediateBlock;
     }
 
-    // 動的depth
-    let depth = Math.max(4, 10 - emptyCells.length / 2); // 調整: 序盤浅く
-    if (aiPlayer === 'ai2') depth += 2; // 神深く
+    // 固定depth: ずっと賢く (12固定で序盤も深く、フリーズなし)
+    const oppThreats = evaluateThreats(board, nextOpponent);
+    let depth = 12; // 固定12: 4x4で十分賢く、負荷低め (0.5-1秒)
+    if (aiPlayer === 'ai1') depth += 1; // ×少し深く
+    else depth += 2; // 神さらに深く
+    if (oppThreats > 0) depth += 1; // 脅威時+1 (妨害優先)
 
-    console.log(`Computing best move for ${aiPlayer}, depth=${depth}, empty=${emptyCells.length}`);
+    console.log(`Computing best move for ${aiPlayer}, depth=${depth}, empty=${emptyCells.length}, oppThreats=${oppThreats}`);
 
     let bestScore = -Infinity;
     let bestMoves = [];
 
     const sortedCells = [...emptyCells].sort((a, b) => {
+        // 妨害ボーナス極大 + 中心
+        const threatBonusA = evaluateThreats(board, nextOpponent) > 0 ? 300 : 0;
+        const threatBonusB = evaluateThreats(board, nextOpponent) > 0 ? 300 : 0;
         const centerDistA = Math.abs(a[0] - 1.5) + Math.abs(a[1] - 1.5);
         const centerDistB = Math.abs(b[0] - 1.5) + Math.abs(b[1] - 1.5);
-        return centerDistA - centerDistB;
+        return (threatBonusA - threatBonusB) || (centerDistA - centerDistB);
     });
 
     for (let [r, c] of sortedCells) {
@@ -301,7 +412,7 @@ function isFull(b) {
 
 function announceWin(player) {
     const mark = getMark(player);
-    status.textContent = `${mark} の勝ち！`;
+    status.textContent = `${mark} の勝ち！ `;
     boardEl.querySelectorAll('.cell').forEach(cell => {
         cell.style.pointerEvents = 'none';
         cell.disabled = true;
@@ -309,7 +420,7 @@ function announceWin(player) {
 }
 
 function announceDraw() {
-    status.textContent = '引き分けだね！ ';
+    status.textContent = '引き分けだ！ ';
     boardEl.querySelectorAll('.cell').forEach(cell => {
         cell.style.pointerEvents = 'none';
         cell.disabled = true;
