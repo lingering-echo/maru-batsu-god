@@ -230,14 +230,11 @@ function getBestMove(board, aiPlayer) {
         return immediateBlock;
     }
 
-    // 固定depth: ずっと賢く (12固定で序盤も深く、フリーズなし)
-    const oppThreats = evaluateThreats(board, nextOpponent);
-    let depth = 12; // 固定12: 4x4で十分賢く、負荷低め (0.5-1秒)
-    if (aiPlayer === 'ai1') depth += 1; // ×少し深く
-    else depth += 2; // 神さらに深く
-    if (oppThreats > 0) depth += 1; // 脅威時+1 (妨害優先)
+    // 固定depth: フリーズなし賢さ (9固定で数手先読み、負荷低め)
+    let depth = 9; // バランス: 4x4で3-5手先読み、0.3-0.8秒
+    if (aiPlayer === 'ai2') depth = 10; // 神少し深く
 
-    console.log(`Computing best move for ${aiPlayer}, depth=${depth}, empty=${emptyCells.length}, oppThreats=${oppThreats}`);
+    console.log(`Computing best move for ${aiPlayer}, depth=${depth}, empty=${emptyCells.length}`);
 
     let bestScore = -Infinity;
     let bestMoves = [];
@@ -412,7 +409,7 @@ function isFull(b) {
 
 function announceWin(player) {
     const mark = getMark(player);
-    status.textContent = `${mark} の勝ち！ `;
+    status.textContent = `${mark} の勝ち！`;
     boardEl.querySelectorAll('.cell').forEach(cell => {
         cell.style.pointerEvents = 'none';
         cell.disabled = true;
@@ -420,7 +417,7 @@ function announceWin(player) {
 }
 
 function announceDraw() {
-    status.textContent = '引き分けだ！ ';
+    status.textContent = '引き分けだね！';
     boardEl.querySelectorAll('.cell').forEach(cell => {
         cell.style.pointerEvents = 'none';
         cell.disabled = true;
