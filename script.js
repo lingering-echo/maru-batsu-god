@@ -231,8 +231,8 @@ function getBestMove(board, aiPlayer) {
     }
 
     // 固定depth: フリーズなし賢さ (9固定で数手先読み、負荷低め)
-    let depth = 9; // バランス: 4x4で3-5手先読み、0.3-0.8秒
-    if (aiPlayer === 'ai2') depth = 10; // 神少し深く
+    let depth = 6; // バランス: 4x4で3-5手先読み、0.3-0.8秒
+    if (aiPlayer === 'ai2') depth = 7; // 神少し深く
 
     console.log(`Computing best move for ${aiPlayer}, depth=${depth}, empty=${emptyCells.length}`);
 
